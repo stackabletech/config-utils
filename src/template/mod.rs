@@ -142,28 +142,18 @@ fn run_all_replacements_on_line(
 ) -> Result<()> {
     loop {
         #[allow(clippy::type_complexity)] // It's only used in a single place
-        let replacements: &[(&str, &str, fn(&str) -> Result<String>)] = &[
-            (
-                ENV_VAR_START_PATTERNS[0],
+        let mut replacements: Vec<(&str, &str, fn(&str) -> Result<String>)> = Vec::new();
+
+        for start_pattern in ENV_VAR_START_PATTERNS {
+            replacements.push((
+                start_pattern,
                 ENV_VAR_END_PATTERN,
                 replacement_action_for_env_var,
-            ),
-            (
-                ENV_VAR_START_PATTERNS[1],
-                ENV_VAR_END_PATTERN,
-                replacement_action_for_env_var,
-            ),
-            (
-                FILE_START_PATTERNS[0],
-                FILE_END_PATTERN,
-                replacement_action_for_file,
-            ),
-            (
-                FILE_START_PATTERNS[1],
-                FILE_END_PATTERN,
-                replacement_action_for_file,
-            ),
-        ];
+            ));
+        }
+        for start_pattern in FILE_START_PATTERNS {
+            replacements.push((start_pattern, FILE_END_PATTERN, replacement_action_for_file));
+        }
 
         let mut changed = false;
         for (start_pattern, end_pattern, replacement_action) in replacements {
@@ -171,7 +161,7 @@ fn run_all_replacements_on_line(
                 line,
                 start_pattern,
                 end_pattern,
-                *replacement_action,
+                replacement_action,
                 file_type,
                 escape,
             )?;
