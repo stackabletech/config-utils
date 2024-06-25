@@ -9,7 +9,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     file_types::{FileType, KNOWN_FILE_TYPES},
-    ENV_VAR_PATTERN_END, ENV_VAR_PATTERN_START, FILE_PATTERN_END, FILE_PATTERN_START,
+    ENV_VAR_END_PATTERN, ENV_VAR_START_PATTERNS, FILE_END_PATTERN, FILE_START_PATTERNS,
 };
 
 pub mod cli_args;
@@ -141,23 +141,41 @@ fn run_all_replacements_on_line(
     escape: bool,
 ) -> Result<()> {
     loop {
+        #[allow(clippy::type_complexity)] // It's only used in a single place
+        let replacements: &[(&str, &str, fn(&str) -> Result<String>)] = &[
+            (
+                ENV_VAR_START_PATTERNS[0],
+                ENV_VAR_END_PATTERN,
+                replacement_action_for_env_var,
+            ),
+            (
+                ENV_VAR_START_PATTERNS[1],
+                ENV_VAR_END_PATTERN,
+                replacement_action_for_env_var,
+            ),
+            (
+                FILE_START_PATTERNS[0],
+                FILE_END_PATTERN,
+                replacement_action_for_file,
+            ),
+            (
+                FILE_START_PATTERNS[1],
+                FILE_END_PATTERN,
+                replacement_action_for_file,
+            ),
+        ];
+
         let mut changed = false;
-        changed |= replace_thingy_in_line(
-            line,
-            ENV_VAR_PATTERN_START,
-            ENV_VAR_PATTERN_END,
-            replacement_action_for_env_var,
-            file_type,
-            escape,
-        )?;
-        changed |= replace_thingy_in_line(
-            line,
-            FILE_PATTERN_START,
-            FILE_PATTERN_END,
-            replacement_action_for_file,
-            file_type,
-            escape,
-        )?;
+        for (start_pattern, end_pattern, replacement_action) in replacements {
+            changed |= replace_thingy_in_line(
+                line,
+                start_pattern,
+                end_pattern,
+                *replacement_action,
+                file_type,
+                escape,
+            )?;
+        }
 
         if !changed {
             break;
