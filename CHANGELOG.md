@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Bump rust-toolchain to 1.84.1 ([#11]).
+
+[#11]: https://github.com/stackabletech/config-utils/pull/11
+
 ## [0.2.0] - 2024-06-25
 
 ### Added
