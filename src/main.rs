@@ -24,7 +24,7 @@ fn main() -> Result<()> {
             file_type,
             dont_escape,
         }) => {
-            template(&file, file_type.as_ref(), !dont_escape).context(TemplateFileSnafu)?;
+            template(file.as_ref(), file_type.as_ref(), !dont_escape).context(TemplateFileSnafu)?;
         }
     }
 

@@ -8,7 +8,7 @@ use std::{
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    file_types::{FileType, KNOWN_FILE_TYPES},
+    file_types::{ReplaceTargetType, KNOWN_FILE_TYPES},
     ENV_VAR_END_PATTERN, ENV_VAR_START_PATTERNS, FILE_END_PATTERN, FILE_START_PATTERNS,
 };
 
@@ -81,63 +81,77 @@ pub enum Error {
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub fn template(file_name: &PathBuf, file_type: Option<&FileType>, escape: bool) -> Result<()> {
-    let file_type = match file_type {
-        Some(file_type) => file_type,
-        None => {
-            let extension = file_name
-                .extension()
-                .context(GetFileExtensionSnafu { file_name })?
+pub fn template(
+    file_name: Option<&PathBuf>,
+    target_type: Option<&ReplaceTargetType>,
+    escape: bool,
+) -> Result<()> {
+    if let Some(file_name) = file_name {
+        // process file
+        let target_type = match target_type {
+            Some(target_type) => target_type,
+            None => {
+                let extension = file_name
+                    .extension()
+                    .context(GetFileExtensionSnafu { file_name })?
+                    .to_str()
+                    .context(GetFileExtensionSnafu { file_name })?;
+
+                KNOWN_FILE_TYPES
+                    .get(extension)
+                    .context(ExtensionUnkownSnafu { extension })?
+            }
+        };
+
+        let file = File::open(file_name).context(ReadFileSnafu { file_name })?;
+        let buf_reader = BufReader::new(file);
+
+        let tmp_file_name = PathBuf::from(format!(
+            "{}.tmp_config_utils",
+            file_name
                 .to_str()
-                .context(GetFileExtensionSnafu { file_name })?;
+                .context(ConvertFileNameToStringSnafu { file_name })?
+        ));
+        let mut temp_file = File::create(&tmp_file_name).context(CreateTemporaryFileSnafu {
+            tmp_file_name: tmp_file_name.clone(),
+        })?;
 
-            KNOWN_FILE_TYPES
-                .get(extension)
-                .context(ExtensionUnkownSnafu { extension })?
+        for line in buf_reader.lines() {
+            let mut line = line.context(ReadLineSnafu { file_name })?;
+
+            run_all_replacements_on_line(&mut line, target_type, escape)?;
+
+            temp_file
+                .write_all(line.as_bytes())
+                .context(WriteToTemporaryFileSnafu {
+                    tmp_file_name: tmp_file_name.clone(),
+                })?;
+            temp_file
+                .write_all(&[b'\n'])
+                .context(WriteToTemporaryFileSnafu {
+                    tmp_file_name: tmp_file_name.clone(),
+                })?;
         }
-    };
 
-    let file = File::open(file_name).context(ReadFileSnafu { file_name })?;
-    let buf_reader = BufReader::new(file);
+        fs::rename(&tmp_file_name, file_name).context(RenameTemporaryFileSnafu {
+            tmp_file_name,
+            destination_file_name: file_name,
+        })?;
 
-    let tmp_file_name = PathBuf::from(format!(
-        "{}.tmp_config_utils",
-        file_name
-            .to_str()
-            .context(ConvertFileNameToStringSnafu { file_name })?
-    ));
-    let mut temp_file = File::create(&tmp_file_name).context(CreateTemporaryFileSnafu {
-        tmp_file_name: tmp_file_name.clone(),
-    })?;
-
-    for line in buf_reader.lines() {
-        let mut line = line.context(ReadLineSnafu { file_name })?;
-
-        run_all_replacements_on_line(&mut line, file_type, escape)?;
-
-        temp_file
-            .write_all(line.as_bytes())
-            .context(WriteToTemporaryFileSnafu {
-                tmp_file_name: tmp_file_name.clone(),
-            })?;
-        temp_file
-            .write_all(&[b'\n'])
-            .context(WriteToTemporaryFileSnafu {
-                tmp_file_name: tmp_file_name.clone(),
-            })?;
+        Ok(())
+    } else {
+        // process environment variables
+        for env_var in env::vars() {
+            println!("{:?}", env_var);
+            run_all_replacements_in_env_var(env_var.0, &mut env_var.1.clone(), escape)?;
+        }
+        Ok(())
     }
-
-    fs::rename(&tmp_file_name, file_name).context(RenameTemporaryFileSnafu {
-        tmp_file_name,
-        destination_file_name: file_name,
-    })?;
-
-    Ok(())
 }
 
 fn run_all_replacements_on_line(
     line: &mut String,
-    file_type: &FileType,
+    target_type: &ReplaceTargetType,
     escape: bool,
 ) -> Result<()> {
     loop {
@@ -162,13 +176,48 @@ fn run_all_replacements_on_line(
                 start_pattern,
                 end_pattern,
                 replacement_action,
-                file_type,
+                target_type,
                 escape,
             )?;
         }
 
         if !changed {
             break;
+        }
+    }
+
+    Ok(())
+}
+
+fn run_all_replacements_in_env_var(
+    env_var_key: String,
+    env_var_val: &mut String,
+    escape: bool,
+) -> Result<()> {
+    #[allow(clippy::type_complexity)] // It's only used in a single place
+    let mut replacements: Vec<(&str, &str, fn(&str) -> Result<String>)> = Vec::new();
+
+    for start_pattern in ENV_VAR_START_PATTERNS {
+        replacements.push((
+            start_pattern,
+            ENV_VAR_END_PATTERN,
+            replacement_action_for_env_var,
+        ));
+    }
+    for start_pattern in FILE_START_PATTERNS {
+        replacements.push((start_pattern, FILE_END_PATTERN, replacement_action_for_file));
+    }
+
+    for (start_pattern, end_pattern, replacement_action) in replacements {
+        if replace_thingy_in_line(
+            env_var_val,
+            start_pattern,
+            end_pattern,
+            replacement_action,
+            &ReplaceTargetType::EnvVar,
+            escape,
+        )? {
+            env::set_var(env_var_key.clone(), env_var_val.clone());
         }
     }
 
@@ -202,7 +251,7 @@ fn replace_thingy_in_line(
     start_pattern: &str,
     end_pattern: &str,
     replacement_action: fn(&str) -> Result<String>,
-    file_type: &FileType,
+    target_type: &ReplaceTargetType,
     escape: bool,
 ) -> Result<bool> {
     // We need to go back to forth to not destroy stuff while iterating.
@@ -229,7 +278,7 @@ fn replace_thingy_in_line(
 
         let mut new_content = replacement_action(parameter)?;
         if escape {
-            new_content = file_type.escape(new_content);
+            new_content = target_type.escape(new_content);
         }
 
         line.replace_range(

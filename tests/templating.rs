@@ -7,7 +7,7 @@ use std::{
 
 use rstest::rstest;
 
-use config_utils::template::template;
+use config_utils::{file_types::ReplaceTargetType, template::template};
 use tempfile::tempdir;
 
 #[rstest]
@@ -19,12 +19,24 @@ fn test_file_templating(#[files("tests/resources/**/*.in")] test_file_in: PathBu
     let test_file_expected = test_file_in.with_extension("expected");
 
     fs::copy(&test_file_in, &test_file).unwrap();
-    template(&test_file, None, true).unwrap();
+    template(Some(&test_file), None, true).unwrap();
 
     let actual = fs::read_to_string(test_file).unwrap();
     let expected = fs::read_to_string(test_file_expected).unwrap();
 
     similar_asserts::assert_eq!(actual, expected);
+}
+
+#[rstest]
+fn test_env_templating() {
+    env::set_var("ENV_TEST", "foo");
+    env::set_var("ENV_NESTED_TEST", "foo ${env:ENV_TEST}");
+    env::set_var("ENV_NESTED_TEST_2", "foo ${env:ENV_NESTED_TEST}");
+
+    template(None, Some(&ReplaceTargetType::EnvVar), true).unwrap();
+
+    similar_asserts::assert_eq!(env::var("ENV_NESTED_TEST").unwrap(), "foo foo");
+    similar_asserts::assert_eq!(env::var("ENV_NESTED_TEST_2").unwrap(), "foo foo foo");
 }
 
 fn set_example_envs(example_dir: &Path) {
