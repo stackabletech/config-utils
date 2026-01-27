@@ -86,8 +86,15 @@ pub fn template(
     target_type: Option<&ReplaceTargetType>,
     escape: bool,
 ) -> Result<()> {
+    // always process environment variables first
+    for env_var in env::vars() {
+        println!("{:?}", env_var);
+        run_all_replacements_in_env_var(env_var.0, &mut env_var.1.clone(), escape)?;
+    }
+
+    // file templating is optional as we may only want to process
+    // at the env-vars
     if let Some(file_name) = file_name {
-        // process file
         let target_type = match target_type {
             Some(target_type) => target_type,
             None => {
@@ -137,16 +144,9 @@ pub fn template(
             tmp_file_name,
             destination_file_name: file_name,
         })?;
-
-        Ok(())
-    } else {
-        // process environment variables
-        for env_var in env::vars() {
-            println!("{:?}", env_var);
-            run_all_replacements_in_env_var(env_var.0, &mut env_var.1.clone(), escape)?;
-        }
-        Ok(())
     }
+
+    Ok(())
 }
 
 fn run_all_replacements_on_line(
@@ -171,7 +171,7 @@ fn run_all_replacements_on_line(
 
         let mut changed = false;
         for (start_pattern, end_pattern, replacement_action) in replacements {
-            changed |= replace_thingy_in_line(
+            changed |= replace_thingy_in_line_content(
                 line,
                 start_pattern,
                 end_pattern,
@@ -209,7 +209,7 @@ fn run_all_replacements_in_env_var(
     }
 
     for (start_pattern, end_pattern, replacement_action) in replacements {
-        if replace_thingy_in_line(
+        if replace_thingy_in_line_content(
             env_var_val,
             start_pattern,
             end_pattern,
@@ -239,15 +239,17 @@ fn replacement_action_for_env_var(env_var_name: &str) -> Result<String> {
     Ok(env_var_content)
 }
 
-/// * `line` is the current line [`String`] that should be templated.
+/// * `line_content` is the current line or env-var [`String`] that should be
+/// templated.
 /// * `start_pattern` must be the start pattern, e.g `${env:`.
 /// * `end_pattern` must be the end pattern, `}` in the most cases.
-/// * `replacement_action` must be a function that is called and get passed the [`&str`] content between the start and end
+/// * `replacement_action` must be a function that is called and get passed the
+/// [`&str`] content between the start and end
 ///   pattern. This can e.g. be the name of the env var or file name to read.
 ///
-/// Returns wether the `line` was modified.
-fn replace_thingy_in_line(
-    line: &mut String,
+/// Returns whether the `line_content` was modified.
+fn replace_thingy_in_line_content(
+    line_content: &mut String,
     start_pattern: &str,
     end_pattern: &str,
     replacement_action: fn(&str) -> Result<String>,
@@ -256,7 +258,7 @@ fn replace_thingy_in_line(
 ) -> Result<bool> {
     // We need to go back to forth to not destroy stuff while iterating.
     // Also this is needed to correctly handle nested cases.
-    let matches = line
+    let matches = line_content
         .rmatch_indices(start_pattern)
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
@@ -267,12 +269,15 @@ fn replace_thingy_in_line(
     }
 
     for index in matches {
-        debug_assert_eq!(&line[index..index + start_pattern.len()], start_pattern);
-        let (parameter, _) = line[index + start_pattern.len()..]
+        debug_assert_eq!(
+            &line_content[index..index + start_pattern.len()],
+            start_pattern
+        );
+        let (parameter, _) = line_content[index + start_pattern.len()..]
             .split_once(end_pattern)
             .context(FindEndPattenSnafu {
                 // FIXME: Truncate string to not bloat error message
-                expression: &line[index..],
+                expression: &line_content[index..],
                 end_pattern,
             })?;
 
@@ -281,7 +286,7 @@ fn replace_thingy_in_line(
             new_content = target_type.escape(new_content);
         }
 
-        line.replace_range(
+        line_content.replace_range(
             index..index + start_pattern.len() + parameter.len() + end_pattern.len(),
             &new_content,
         );

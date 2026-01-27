@@ -5,6 +5,9 @@ use lazy_static::lazy_static;
 use properties::PropertiesEscaper;
 use xml::XmlEscaper;
 
+use crate::file_types::env_var::EnvVarEscaper;
+
+mod env_var;
 mod properties;
 mod xml;
 
@@ -34,7 +37,7 @@ impl ReplaceTargetType {
         match self {
             ReplaceTargetType::Properties => PropertiesEscaper::escape(line),
             ReplaceTargetType::Xml => XmlEscaper::escape(line),
-            ReplaceTargetType::EnvVar => line,
+            ReplaceTargetType::EnvVar => EnvVarEscaper::escape(line),
         }
     }
 }
