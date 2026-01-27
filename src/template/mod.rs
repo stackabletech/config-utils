@@ -7,10 +7,7 @@ use std::{
 
 use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::{
-    file_types::{ReplaceTargetType, KNOWN_FILE_TYPES},
-    ENV_VAR_END_PATTERN, ENV_VAR_START_PATTERNS, FILE_END_PATTERN, FILE_START_PATTERNS,
-};
+use crate::file_types::{ReplaceTargetType, KNOWN_FILE_TYPES, REPLACEMENTS};
 
 pub mod cli_args;
 
@@ -155,27 +152,13 @@ fn run_all_replacements_on_line(
     escape: bool,
 ) -> Result<()> {
     loop {
-        #[allow(clippy::type_complexity)] // It's only used in a single place
-        let mut replacements: Vec<(&str, &str, fn(&str) -> Result<String>)> = Vec::new();
-
-        for start_pattern in ENV_VAR_START_PATTERNS {
-            replacements.push((
-                start_pattern,
-                ENV_VAR_END_PATTERN,
-                replacement_action_for_env_var,
-            ));
-        }
-        for start_pattern in FILE_START_PATTERNS {
-            replacements.push((start_pattern, FILE_END_PATTERN, replacement_action_for_file));
-        }
-
         let mut changed = false;
-        for (start_pattern, end_pattern, replacement_action) in replacements {
+        for (start_pattern, end_pattern, replacement_action) in &*REPLACEMENTS {
             changed |= replace_thingy_in_line_content(
                 line,
                 start_pattern,
                 end_pattern,
-                replacement_action,
+                *replacement_action,
                 target_type,
                 escape,
             )?;
@@ -194,26 +177,12 @@ fn run_all_replacements_in_env_var(
     env_var_val: &mut String,
     escape: bool,
 ) -> Result<()> {
-    #[allow(clippy::type_complexity)] // It's only used in a single place
-    let mut replacements: Vec<(&str, &str, fn(&str) -> Result<String>)> = Vec::new();
-
-    for start_pattern in ENV_VAR_START_PATTERNS {
-        replacements.push((
-            start_pattern,
-            ENV_VAR_END_PATTERN,
-            replacement_action_for_env_var,
-        ));
-    }
-    for start_pattern in FILE_START_PATTERNS {
-        replacements.push((start_pattern, FILE_END_PATTERN, replacement_action_for_file));
-    }
-
-    for (start_pattern, end_pattern, replacement_action) in replacements {
+    for (start_pattern, end_pattern, replacement_action) in &*REPLACEMENTS {
         if replace_thingy_in_line_content(
             env_var_val,
             start_pattern,
             end_pattern,
-            replacement_action,
+            *replacement_action,
             &ReplaceTargetType::EnvVar,
             escape,
         )? {
@@ -224,7 +193,7 @@ fn run_all_replacements_in_env_var(
     Ok(())
 }
 
-fn replacement_action_for_file(file_name: &str) -> Result<String> {
+pub fn replacement_action_for_file(file_name: &str) -> Result<String> {
     let file_content =
         fs::read_to_string(file_name).context(ReadFileForTemplatingSnafu { file_name })?;
     let file_content = file_content.trim_end_matches('\n');
@@ -232,7 +201,7 @@ fn replacement_action_for_file(file_name: &str) -> Result<String> {
     Ok(file_content.to_owned())
 }
 
-fn replacement_action_for_env_var(env_var_name: &str) -> Result<String> {
+pub fn replacement_action_for_env_var(env_var_name: &str) -> Result<String> {
     let env_var_content =
         env::var(env_var_name).context(ReadEnvVarForTemplatingSnafu { env_var_name })?;
 
