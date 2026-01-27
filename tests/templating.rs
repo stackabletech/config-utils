@@ -28,15 +28,22 @@ fn test_file_templating(#[files("tests/resources/**/*.in")] test_file_in: PathBu
 }
 
 #[rstest]
-fn test_env_templating() {
-    env::set_var("ENV_TEST", "foo");
-    env::set_var("ENV_NESTED_TEST", "foo ${env:ENV_TEST}");
-    env::set_var("ENV_NESTED_TEST_2", "foo ${env:ENV_NESTED_TEST}");
+/// Direct nesting should work as replacements take place in-line and are not
+/// dependent on the order of resolution. If this was done differently i.e.
+/// with multiple replacements across dependent env-vars, then the order in
+/// which this is done *is* significant and not determinant.
+fn test_env_templating_nesting() {
+    env::remove_var("ENV_NEST_BASE");
+    env::remove_var("ENV_NEST_VAR");
+    env::remove_var("ENV_NESTED");
+
+    env::set_var("ENV_NEST_BASE", "ENV_NEST_VAR");
+    env::set_var("ENV_NEST_VAR", "bar baz");
+    env::set_var("ENV_NESTED", "foo ${env:${env:ENV_NEST_BASE}}");
 
     template(None, Some(&ReplaceTargetType::EnvVar), true).unwrap();
 
-    similar_asserts::assert_eq!(env::var("ENV_NESTED_TEST").unwrap(), "foo foo");
-    similar_asserts::assert_eq!(env::var("ENV_NESTED_TEST_2").unwrap(), "foo foo foo");
+    similar_asserts::assert_eq!(env::var("ENV_NESTED").unwrap(), "foo bar baz");
 }
 
 fn set_example_envs(example_dir: &Path) {
