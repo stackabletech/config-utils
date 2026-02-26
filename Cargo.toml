@@ -13,6 +13,6 @@ lazy_static = "1.4"
 snafu = "0.8"
 
 [dev-dependencies]
-rstest = "0.21"
+rstest = "0.26"
 similar-asserts = "1.5"
 tempfile = "3.10"
