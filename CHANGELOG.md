@@ -8,9 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Bump `clap` to 4.6, `lazy_static` to 1.5 and Rust to 1.95.0 ([#XX]).
+- Bump `clap` to 4.6, `lazy_static` to 1.5 and Rust to 1.95.0 ([#13]).
 
-[#XX]: https://github.com/stackabletech/config-utils/pull/XX
+[#13]: https://github.com/stackabletech/config-utils/pull/13
 
 ## [0.2.0] - 2024-06-25
 
