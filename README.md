@@ -1,5 +1,9 @@
 # config-utils
 
+> [!NOTE]
+> The code of this repository was moved to [operator-rs](https://github.com/stackabletech/operator-rs) in [#1268](https://github.com/stackabletech/operator-rs/pull/1268).
+> It is now archived.
+
 This utility currently only supports filling your config with contents from environmental variables or files (called templating).
 
 ## Templating
